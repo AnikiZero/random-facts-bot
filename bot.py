@@ -1,4 +1,5 @@
-print("Бот запщуен!")
+print("Бот запущен!")
+
 import sqlite3
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -11,8 +12,8 @@ import random
 import os
 
 # ==== Настройки ====
-OWNER_ID = int(os.getenv("5757028331"))
-BOT_TOKEN = os.getenv("7483963905:AAGsdHReggsvE5PAIr5kAVh-eFiiMeQR4Ok")
+OWNER_ID = int(os.getenv("OWNER_ID"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 last_fact_id = None  # Для антиповтора
 
 # ==== Работа с БД ====
