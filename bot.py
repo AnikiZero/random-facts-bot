@@ -1,5 +1,5 @@
-print("Бот запущен!")
-
+import os
+import random
 import sqlite3
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -8,238 +8,147 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
 )
-import random
-import os
 
-# ==== Настройки ====
+print("🤖 Бот запущен!")
+
+# === Настройки ===
 OWNER_ID = int(os.getenv("OWNER_ID"))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 last_fact_id = None  # Для антиповтора
 
-# ==== Работа с БД ====
-def init_db():
-    conn = sqlite3.connect('facts.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS facts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fact TEXT NOT NULL UNIQUE,
-            category TEXT DEFAULT 'Общая'
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-def add_fact(fact_text, category="Общая"):
-    conn = sqlite3.connect('facts.db')
-    cursor = conn.cursor()
-    try:
-        cursor.execute('INSERT INTO facts (fact, category) VALUES (?, ?)', (fact_text, category))
-        conn.commit()
-        result = True
-    except sqlite3.IntegrityError:
-        result = False
-    conn.close()
-    return result
-
-def get_random_fact_exclude_last():
-    global last_fact_id
-    conn = sqlite3.connect('facts.db')
-    cursor = conn.cursor()
-    if last_fact_id is None:
-        cursor.execute('SELECT id, fact FROM facts ORDER BY RANDOM() LIMIT 1')
-    else:
-        cursor.execute('SELECT id, fact FROM facts WHERE id != ? ORDER BY RANDOM() LIMIT 1', (last_fact_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        last_fact_id = row[0]
-        return row[1]
-    else:
-        return "❗ В базе пока нет фактов."
-
-def get_fact_by_category(category):
-    global last_fact_id
-    conn = sqlite3.connect('facts.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, fact FROM facts WHERE category = ? ORDER BY RANDOM() LIMIT 1', (category,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        last_fact_id = row[0]
-        return row[1]
-    else:
-        return "❗ Нет фактов в этой категории."
-
-def get_categories():
-    conn = sqlite3.connect('facts.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT DISTINCT category FROM facts')
-    rows = cursor.fetchall()
-    conn.close()
-    return [row[0] for row in rows]
-
-def get_last_fact():
-    conn = sqlite3.connect('facts.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT fact, category FROM facts ORDER BY id DESC LIMIT 1')
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        return f"{row[0]}\n📂 Категория: {row[1]}"
-    else:
-        return "❗ Пока нет фактов!"
-
-def count_facts():
-    conn = sqlite3.connect('facts.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM facts')
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
-
-# ==== Новый набор фактов ====
-facts_list = [
-    ("Антарктида — самая большая пустыня на Земле.", "Природа"),
-    ("На Венере день длится дольше, чем год.", "Космос"),
-    ("У осьминога три сердца.", "Животные"),
-    ("Человеческий глаз различает до 10 миллионов цветов.", "Человек"),
-    ("Пчёлы узнают лица людей.", "Животные"),
-    ("Свет звёзд — взгляд в прошлое.", "Космос"),
-    ("Слон может плакать и помнить ушедших.", "Животные"),
-    ("80% вулканов — под водой.", "Природа"),
-    ("Самая высокая волна — 31 метр.", "Природа"),
-    ("Земля пролетает 30 км в секунду.", "Космос"),
-    ("Человек моргает 15 раз в минуту.", "Человек"),
-    ("Эверест растёт на 4 мм в год.", "Природа"),
-    ("Мозг человека на 75% из воды.", "Человек"),
-    ("Дельфины зовут друг друга по имени.", "Животные"),
-    ("На Плутоне есть ледяные вулканы.", "Космос"),
-    ("Гренландская акула живёт до 400 лет.", "Животные"),
-    ("Человек теряет до 100 волос в день.", "Человек"),
-    ("Самая большая пещера — Ханг Сон Дунг.", "Природа"),
-    ("Над Землёй летают тысячи спутников.", "Космос"),
-    ("У тигров полоски даже на коже.", "Животные"),
-    ("Летучие мыши — единственные летающие млекопитающие.", "Животные"),
-    ("Океан хранит 95% неразведанных глубин.", "Природа"),
-    ("Сердце синего кита — размером с машину.", "Животные"),
-]
-
-def fill_facts():
-    for fact, category in facts_list:
-        add_fact(fact, category)
-
-# ==== Хендлеры ====
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("📚 Случайный факт", callback_data='get_fact')],
-        [InlineKeyboardButton("📂 Категории", callback_data='show_categories')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "👋 Привет! Я бот с интересными фактами!\n\n"
-        "Команды:\n"
-        "/randomfact — случайный факт\n"
-        "/categories — выбрать категорию\n"
-        "/addfact — добавить факт (только владелец)\n"
-        "/stats — статистика\n"
-        "/about — обо мне\n"
-        "/lastfact — последний факт\n"
-        "/help — помощь",
-        reply_markup=reply_markup
+# === База данных ===
+conn = sqlite3.connect("facts.db")
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS facts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fact TEXT NOT NULL,
+        category TEXT NOT NULL
     )
+""")
+conn.commit()
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# === Наполним начальными фактами ===
+def fill_facts():
+    facts = [
+        ("Антарктида — самая большая пустыня на Земле!", "География"),
+        ("Медузы существуют более 500 миллионов лет!", "Биология"),
+        ("На Венере день длиннее года.", "Астрономия"),
+        ("У осьминога три сердца.", "Биология"),
+        ("Человеческий глаз различает до 10 млн оттенков.", "Человек"),
+        ("Первое растение в космосе — арабидопсис.", "Космос"),
+        ("Самая высокая волна — 31 метр!", "Природа"),
+        ("Пчёлы могут узнавать лица людей.", "Биология"),
+        ("На дне Марианской впадины давление в 1000 раз выше.", "Океан"),
+        ("Слон может плакать.", "Животные"),
+        ("Каждую секунду Земля пролетает 30 км!", "Космос"),
+        ("Свет звёзд — это прошлое во времени.", "Космос"),
+        ("В сердце человека около 5 литров крови.", "Человек"),
+        ("Планета Уран вращается лёжа на боку.", "Космос"),
+        ("Самое глубокое озеро — Байкал.", "География"),
+        ("Киты поют песни для общения.", "Животные"),
+        ("На Юпитере шторм длится сотни лет.", "Космос"),
+        ("Кошки спят около 70% жизни.", "Животные"),
+        ("Вулканы извергают лаву температурой 1200°C.", "Природа"),
+        ("Океаны покрывают 71% Земли.", "География"),
+    ]
+    for fact, category in facts:
+        cursor.execute("INSERT INTO facts (fact, category) VALUES (?, ?)", (fact, category))
+    conn.commit()
+
+# Только при первом запуске — потом можно закомментить!
+# fill_facts()
+
+# === Хендлеры ===
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📚 Команды бота:\n"
-        "/randomfact — случайный факт\n"
-        "/categories — выбрать категорию\n"
-        "/addfact — добавить факт (только владелец)\n"
-        "/stats — статистика\n"
-        "/about — обо мне\n"
-        "/lastfact — последний факт\n"
+        "Привет! Я — бот фактов. Используй /randomfact, /categories или /addfact."
     )
 
 async def random_fact(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    fact = get_random_fact_exclude_last()
-    await update.message.reply_text(fact)
+    global last_fact_id
+    cursor.execute("SELECT * FROM facts")
+    facts = cursor.fetchall()
 
-async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    categories = get_categories()
-    if not categories:
-        await update.message.reply_text("❗ Категорий пока нет.")
+    if not facts:
+        await update.message.reply_text("Фактов нет.")
         return
-    buttons = [[InlineKeyboardButton(cat, callback_data=f'cat_{cat}')] for cat in categories]
-    reply_markup = InlineKeyboardMarkup(buttons)
-    await update.message.reply_text("📂 Выбери категорию:", reply_markup=reply_markup)
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    if data == 'get_fact':
-        fact = get_random_fact_exclude_last()
-        await query.edit_message_text(text=fact)
-    elif data == 'show_categories':
-        categories = get_categories()
-        buttons = [[InlineKeyboardButton(cat, callback_data=f'cat_{cat}')] for cat in categories]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await query.edit_message_text("📂 Выбери категорию:", reply_markup=reply_markup)
-    elif data.startswith('cat_'):
-        category = data[4:]
-        fact = get_fact_by_category(category)
-        await query.edit_message_text(f"📂 Категория: {category}\n\n{fact}")
+    fact = random.choice(facts)
+    while len(facts) > 1 and fact[0] == last_fact_id:
+        fact = random.choice(facts)
 
-async def add_fact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    last_fact_id = fact[0]
+    await update.message.reply_text(f"📂 Категория: {fact[2]}\n\n{fact[1]}")
+
+async def add_fact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("⛔ Только владелец может добавлять факты.")
         return
-    if not context.args:
-        await update.message.reply_text("⚙️ Формат: /addfact Категория|Факт")
-        return
-    text = ' '.join(context.args)
-    if "|" not in text:
-        await update.message.reply_text("⚙️ Формат: /addfact Категория|Факт")
-        return
-    category, fact_text = map(str.strip, text.split("|", 1))
-    if not category or not fact_text:
-        await update.message.reply_text("⚙️ Оба поля должны быть заполнены.")
-        return
-    if add_fact(fact_text, category):
-        await update.message.reply_text(f"✅ Факт добавлен!\nКатегория: {category}")
-    else:
-        await update.message.reply_text("⚠️ Такой факт уже есть!")
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total = count_facts()
-    await update.message.reply_text(f"📊 Всего фактов в базе: {total}")
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Используй: /addfact [Категория] [Текст факта]")
+        return
 
-async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Бот-фактолог, автор — @anikisz")
+    category = args[0]
+    fact_text = " ".join(args[1:])
+
+    cursor.execute("INSERT INTO facts (fact, category) VALUES (?, ?)", (fact_text, category))
+    conn.commit()
+    await update.message.reply_text(f"✅ Факт добавлен!\n\n📂 Категория: {category}\n{fact_text}")
 
 async def last_fact(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    fact = get_last_fact()
-    await update.message.reply_text(f"🆕 Последний факт:\n{fact}")
+    cursor.execute("SELECT * FROM facts ORDER BY id DESC LIMIT 1")
+    fact = cursor.fetchone()
+    if fact:
+        await update.message.reply_text(f"📂 Категория: {fact[2]}\n\n{fact[1]}")
+    else:
+        await update.message.reply_text("Фактов нет.")
 
-async def categories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await show_categories(update, context)
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("SELECT COUNT(*) FROM facts")
+    count = cursor.fetchone()[0]
+    await update.message.reply_text(f"📊 Всего фактов в базе: {count}")
 
-# ==== Запуск ====
-if __name__ == '__main__':
-    init_db()
-    fill_facts()
+async def categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("SELECT DISTINCT category FROM facts")
+    categories = [row[0] for row in cursor.fetchall()]
+    if not categories:
+        await update.message.reply_text("Категорий нет.")
+        return
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    keyboard = [
+        [InlineKeyboardButton(cat, callback_data=f"cat_{cat}")] for cat in categories
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Выберите категорию:", reply_markup=reply_markup)
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("randomfact", random_fact))
-    app.add_handler(CommandHandler("categories", categories_command))
-    app.add_handler(CommandHandler("addfact", add_fact_command))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("about", about))
-    app.add_handler(CommandHandler("lastfact", last_fact))
-    app.add_handler(CallbackQueryHandler(button_handler))
+async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    category = query.data.replace("cat_", "")
 
-    print("🤖 Бот запущен!")
-    app.run_polling()
+    cursor.execute("SELECT * FROM facts WHERE category = ?", (category,))
+    facts = cursor.fetchall()
+    if not facts:
+        await query.edit_message_text(f"Фактов для категории {category} нет.")
+        return
+
+    fact = random.choice(facts)
+    await query.edit_message_text(f"📂 Категория: {fact[2]}\n\n{fact[1]}")
+
+# === Запуск ===
+
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("randomfact", random_fact))
+app.add_handler(CommandHandler("addfact", add_fact))
+app.add_handler(CommandHandler("lastfact", last_fact))
+app.add_handler(CommandHandler("stats", stats))
+app.add_handler(CommandHandler("categories", categories))
+app.add_handler(CallbackQueryHandler(category_callback))
+
+app.run_polling()
